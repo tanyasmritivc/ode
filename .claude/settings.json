@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node test-session-redirect.mjs)",
+      "Bash(node test-weave-display.mjs)",
+      "Bash(netstat -ano)",
+      "Bash(tail -80 /tmp/ode-dev.log 2>&1)",
+      "Read(//tmp/**)",
+      "Bash(taskkill //PID 13292 //F)",
+      "Bash(taskkill //PID 3416 //F)",
+      "Bash(taskkill //PID 16032 //F)",
+      "Bash(rm -rf .next)",
+      "Bash(npm run *)",
+      "Bash(break)",
+      "Bash(curl -s -o /dev/null -w \"/: %{http_code}\\\\n\" http://localhost:3000/)",
+      "Bash(curl -s -o /dev/null -w \"/signup: %{http_code}\\\\n\" http://localhost:3000/signup)",
+      "Bash(node -e \"console.log\\(require\\('fs'\\).readFileSync\\('node_modules/@supabase/ssr/dist/module/cookies.js','utf8'\\)\\)\")",
+      "Bash(node check-orphans.mjs)",
+      "Bash(node backfill-profile.mjs)",
+      "Bash(node check-posts.mjs)",
+      "Bash(curl -s -o /dev/null -w \"server check: %{http_code}\\\\n\" http://localhost:3000/)",
+      "Bash(node test-follow.mjs)",
+      "Bash(node test-search.mjs)",
+      "Bash(node test-delete-account.mjs)",
+      "Bash(curl -s -o /dev/null -w \"status: %{http_code}\\\\n\" -X POST http://localhost:3000/api/account/delete)",
+      "Bash(curl -s -o /dev/null -w \"status: %{http_code}, location: %{redirect_url}\\\\n\" http://localhost:3000/settings)",
+      "Bash(curl -s http://localhost:3000/login)",
+      "Bash(node test-ui-checks.mjs)"
+    ]
+  }
+}
