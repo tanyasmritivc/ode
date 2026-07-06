@@ -6,6 +6,7 @@ import Image from "next/image";
 import { createClient } from "@/lib/supabase/client";
 import { resizeImageFile } from "@/lib/image";
 import { TagInput } from "@/components/TagInput";
+import { reinforcePostTags } from "@/lib/taste";
 
 const CAPTION_MAX_LENGTH = 250;
 
@@ -96,6 +97,8 @@ export default function NewPostPage() {
       }));
       const { error: postTagError } = await supabase.from("post_tags").insert(postTagRows);
       if (postTagError) throw postTagError;
+
+      await reinforcePostTags(post.id, userId);
 
       router.push(`/post/${post.id}`);
       router.refresh();

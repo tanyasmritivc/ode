@@ -3,6 +3,7 @@ import type { PostWithAuthor } from "@/types/database";
 import { Avatar } from "@/components/Avatar";
 import { AutoRatioImage } from "@/components/AutoRatioImage";
 import { LikeButton } from "@/components/LikeButton";
+import { QuickAddToWeave } from "@/components/QuickAddToWeave";
 
 function CommentIcon() {
   return (
@@ -21,17 +22,42 @@ function CommentIcon() {
   );
 }
 
-export function PostCard({ post, viewerId }: { post: PostWithAuthor; viewerId?: string | null }) {
+export function PostCard({
+  post,
+  viewerId,
+  onRemove,
+}: {
+  post: PostWithAuthor;
+  viewerId?: string | null;
+  onRemove?: () => void;
+}) {
   return (
     <Link
       href={`/post/${post.id}`}
-      className="masonry-item block rounded-card overflow-hidden glass hover-lift"
+      className="masonry-item block rounded-card overflow-hidden glass hover-lift group"
     >
-      <AutoRatioImage
-        src={post.image_url}
-        alt={post.title}
-        sizes="(min-width: 1800px) 16vw, (min-width: 1400px) 20vw, (min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
-      />
+      <div className="relative">
+        <AutoRatioImage
+          src={post.image_url}
+          alt={post.title}
+          sizes="(min-width: 1800px) 16vw, (min-width: 1400px) 20vw, (min-width: 1024px) 25vw, (min-width: 640px) 33vw, 50vw"
+        />
+        {onRemove ? (
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onRemove();
+            }}
+            aria-label="Remove from weave"
+            className="absolute top-2 left-2 z-10 h-8 w-8 rounded-full bg-white/90 border border-hairline text-ink flex items-center justify-center shadow-sm"
+          >
+            ×
+          </button>
+        ) : (
+          <QuickAddToWeave postId={post.id} viewerId={viewerId ?? null} />
+        )}
+      </div>
       <div className="p-3">
         <p className="text-sm font-medium leading-snug truncate">{post.title}</p>
         {post.caption && (

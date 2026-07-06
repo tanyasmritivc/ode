@@ -47,13 +47,14 @@ export type WeavePost = {
   position: number;
 };
 
-export type NotificationType = "follow" | "follow_back";
+export type NotificationType = "follow" | "follow_back" | "weave_invite";
 
 export type Notification = {
   id: string;
   recipient_id: string;
   actor_id: string;
   type: NotificationType;
+  weave_id: string | null;
   read: boolean;
   created_at: string;
 };
@@ -70,6 +71,19 @@ export type Comment = {
   user_id: string;
   body: string;
   created_at: string;
+};
+
+export type UserTagAffinity = {
+  user_id: string;
+  tag_id: string;
+  score: number;
+  last_reinforced_at: string;
+};
+
+export type WeaveCollaborator = {
+  weave_id: string;
+  user_id: string;
+  added_at: string;
 };
 
 export type Database = {
@@ -112,7 +126,7 @@ export type Database = {
       };
       notifications: {
         Row: Notification;
-        Insert: Pick<Notification, "recipient_id" | "actor_id" | "type">;
+        Insert: Pick<Notification, "recipient_id" | "actor_id" | "type"> & Partial<Pick<Notification, "weave_id">>;
         Update: Partial<Pick<Notification, "read">>;
       };
       likes: {
@@ -124,6 +138,16 @@ export type Database = {
         Row: Comment;
         Insert: Pick<Comment, "post_id" | "user_id" | "body">;
         Update: Partial<Comment>;
+      };
+      user_tag_affinity: {
+        Row: UserTagAffinity;
+        Insert: Pick<UserTagAffinity, "user_id" | "tag_id"> & Partial<Pick<UserTagAffinity, "score" | "last_reinforced_at">>;
+        Update: Partial<UserTagAffinity>;
+      };
+      weave_collaborators: {
+        Row: WeaveCollaborator;
+        Insert: Pick<WeaveCollaborator, "weave_id" | "user_id">;
+        Update: Partial<WeaveCollaborator>;
       };
     };
   };

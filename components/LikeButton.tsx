@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { reinforcePostTags } from "@/lib/taste";
 import { cn } from "@/lib/utils";
 
 function HeartIcon({ filled }: { filled: boolean }) {
@@ -56,6 +57,9 @@ export function LikeButton({
     if (error) {
       setLiked(!nextLiked);
       setCount((c) => c + (nextLiked ? -1 : 1));
+    } else if (nextLiked) {
+      // Reinforce, never on unlike - unliking shouldn't reverse the signal.
+      reinforcePostTags(postId, viewerId);
     }
     setPending(false);
   }

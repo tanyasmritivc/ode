@@ -15,10 +15,17 @@ type Row = {
   read: boolean;
   created_at: string;
   actor: { username: string; name: string; avatar_url: string | null } | null;
+  weave: { id: string; prompt: string } | null;
 };
 
 function messageFor(row: Row): string {
+  if (row.type === "weave_invite") return `invited you to collaborate on "${row.weave?.prompt ?? "a weave"}"`;
   return row.type === "follow_back" ? "followed you back" : "started following you";
+}
+
+function linkFor(row: Row): string {
+  if (row.type === "weave_invite" && row.weave) return `/weave/${row.weave.id}`;
+  return `/profile/${row.actor?.username}`;
 }
 
 export default function NotificationsPage() {
@@ -45,7 +52,7 @@ export default function NotificationsPage() {
     const supabase = createClient();
     const { data } = await supabase
       .from("notifications")
-      .select("id,type,read,created_at,actor:profiles!notifications_actor_id_fkey(username,name,avatar_url)")
+      .select("id,type,read,created_at,actor:profiles!notifications_actor_id_fkey(username,name,avatar_url),weave:weaves(id,prompt)")
       .eq("recipient_id", uid)
       .order("created_at", { ascending: false })
       .limit(100);
@@ -90,7 +97,7 @@ export default function NotificationsPage() {
               r.actor ? (
                 <li key={r.id} className={i > 0 ? "border-t border-hairline/60" : ""}>
                   <Link
-                    href={`/profile/${r.actor.username}`}
+                    href={linkFor(r)}
                     onClick={() => !r.read && markRead(r.id)}
                     className={cn(
                       "flex items-center gap-3 px-4 py-3.5 hover:bg-black/5 transition-colors",

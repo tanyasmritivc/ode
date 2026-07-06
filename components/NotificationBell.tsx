@@ -13,6 +13,7 @@ type Row = {
   read: boolean;
   created_at: string;
   actor: { username: string; name: string; avatar_url: string | null } | null;
+  weave: { id: string; prompt: string } | null;
 };
 
 function BellIcon({ active }: { active?: boolean }) {
@@ -34,7 +35,13 @@ function BellIcon({ active }: { active?: boolean }) {
 }
 
 function messageFor(row: Row): string {
+  if (row.type === "weave_invite") return `invited you to collaborate on "${row.weave?.prompt ?? "a weave"}"`;
   return row.type === "follow_back" ? "followed you back" : "started following you";
+}
+
+function linkFor(row: Row): string {
+  if (row.type === "weave_invite" && row.weave) return `/weave/${row.weave.id}`;
+  return `/profile/${row.actor?.username}`;
 }
 
 export function NotificationBell({
@@ -65,7 +72,7 @@ export function NotificationBell({
     const supabase = createClient();
     const { data } = await supabase
       .from("notifications")
-      .select("id,type,read,created_at,actor:profiles!notifications_actor_id_fkey(username,name,avatar_url)")
+      .select("id,type,read,created_at,actor:profiles!notifications_actor_id_fkey(username,name,avatar_url),weave:weaves(id,prompt)")
       .eq("recipient_id", currentUserId)
       .order("created_at", { ascending: false })
       .limit(30);
@@ -127,7 +134,7 @@ export function NotificationBell({
                   r.actor ? (
                     <li key={r.id}>
                       <Link
-                        href={`/profile/${r.actor.username}`}
+                        href={linkFor(r)}
                         onClick={() => {
                           if (!r.read) markRead(r.id);
                           setOpen(false);

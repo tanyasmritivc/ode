@@ -129,6 +129,12 @@ export default function NewWeavePage() {
         </button>
       </form>
 
+      {generating && (
+        <p className="text-xs text-secondary text-center mt-3">
+          Looking closely at each photo — this can take several seconds…
+        </p>
+      )}
+
       <div className="flex justify-center mt-4">
         <button
           type="button"

@@ -1,7 +1,6 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { PostCard } from "@/components/PostCard";
-import { DeleteWeaveButton } from "@/components/DeleteWeaveButton";
+import { WeaveBoard } from "@/components/WeaveBoard";
 import { timeAgo } from "@/lib/utils";
 import type { PostWithAuthor } from "@/types/database";
 
@@ -92,25 +91,42 @@ export default async function WeaveDetailPage({ params }: { params: { id: string
 
   const isOwner = viewer?.id === weave.user_id;
 
+  let isCollaborator = false;
+  if (viewer && !isOwner) {
+    const { data: collabRow } = await supabase
+      .from("weave_collaborators")
+      .select("user_id")
+      .eq("weave_id", weave.id)
+      .eq("user_id", viewer.id)
+      .maybeSingle();
+    isCollaborator = Boolean(collabRow);
+  }
+
+  const { data: collabRows } = await supabase
+    .from("weave_collaborators")
+    .select("profiles(id,username,name,avatar_url)")
+    .eq("weave_id", weave.id);
+
+  const collaborators = ((collabRows ?? []) as unknown as {
+    profiles: { id: string; username: string; name: string; avatar_url: string | null } | null;
+  }[])
+    .map((r) => r.profiles)
+    .filter((p): p is { id: string; username: string; name: string; avatar_url: string | null } => p != null);
+
   return (
     <div className="mx-auto max-w-6xl">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">{weave.prompt}</h1>
-          <p className="font-mono-tag text-xs text-secondary mt-1">{timeAgo(weave.created_at)}</p>
-        </div>
-        {isOwner && <DeleteWeaveButton weaveId={weave.id} />}
-      </div>
+      <h1 className="text-2xl font-semibold tracking-tight">{weave.prompt}</h1>
+      <p className="font-mono-tag text-xs text-secondary mt-1">{timeAgo(weave.created_at)}</p>
 
-      {posts.length === 0 ? (
-        <p className="text-sm text-secondary mt-8 text-center">This weave has no posts.</p>
-      ) : (
-        <div className="masonry mt-8">
-          {posts.map((post) => (
-            <PostCard key={post.id} post={post} viewerId={viewer?.id ?? null} />
-          ))}
-        </div>
-      )}
+      <WeaveBoard
+        weaveId={weave.id}
+        ownerId={weave.user_id}
+        viewerId={viewer?.id ?? null}
+        isOwner={isOwner}
+        isCollaborator={isCollaborator}
+        initialPosts={posts}
+        initialCollaborators={collaborators}
+      />
     </div>
   );
 }

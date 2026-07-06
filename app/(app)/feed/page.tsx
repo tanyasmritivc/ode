@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { fetchPostsPage, fetchSuggested, topTagsFromPosts, attachEngagement } from "@/lib/posts";
 import { createClient } from "@/lib/supabase/client";
+import { fetchCoreTagNames } from "@/lib/taste";
 import type { PostWithAuthor } from "@/types/database";
 import { PostCard } from "@/components/PostCard";
 import { SuggestedRow } from "@/components/SuggestedRow";
@@ -23,6 +24,7 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewerId, setViewerId] = useState<string | null>(null);
+  const [coreTags, setCoreTags] = useState<string[]>([]);
   const hasLoadedInitial = useRef(false);
 
   const allShownIds = batches.flatMap((b) => [
@@ -30,12 +32,15 @@ export default function HomePage() {
     ...b.suggested.map((p) => p.id),
   ]);
 
-  async function loadMore(currentViewerId: string | null) {
+  async function loadMore(currentViewerId: string | null, currentCoreTags: string[]) {
     setLoading(true);
     setError(null);
     try {
       const rawPosts = await fetchPostsPage(offset, PAGE_SIZE);
-      const topTags = topTagsFromPosts(rawPosts, 3);
+      // Prefer the person's actual established taste (core tags) over
+      // whatever happens to be in the freshest batch of posts; only fall
+      // back to the batch-derived tags for someone with no taste history yet.
+      const topTags = currentCoreTags.length > 0 ? currentCoreTags.slice(0, 3) : topTagsFromPosts(rawPosts, 3);
       const suggested = await fetchSuggested(topTags, [
         ...allShownIds,
         ...rawPosts.map((p) => p.id),
@@ -57,9 +62,12 @@ export default function HomePage() {
     if (hasLoadedInitial.current) return;
     hasLoadedInitial.current = true;
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => {
-      setViewerId(data.user?.id ?? null);
-      loadMore(data.user?.id ?? null);
+    supabase.auth.getUser().then(async ({ data }) => {
+      const uid = data.user?.id ?? null;
+      setViewerId(uid);
+      const core = uid ? await fetchCoreTagNames(uid) : [];
+      setCoreTags(core);
+      loadMore(uid, core);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -103,7 +111,7 @@ export default function HomePage() {
           {!loading && hasMore && batches.length > 0 && (
             <div className="flex justify-center my-8">
               <button
-                onClick={() => loadMore(viewerId)}
+                onClick={() => loadMore(viewerId, coreTags)}
                 className="rounded-full border border-hairline px-5 py-2.5 text-sm font-medium hover:border-ink transition-colors"
               >
                 Load more

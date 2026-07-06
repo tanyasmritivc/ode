@@ -7,6 +7,8 @@ import { SquareGrid } from "@/components/SquareGrid";
 import { WeaveCard } from "@/components/WeaveCard";
 import { EmptyState } from "@/components/EmptyState";
 import { ProfileFollowStats } from "@/components/ProfileFollowStats";
+import { TastePanel } from "@/components/TastePanel";
+import { effectiveScore, tasteTier } from "@/lib/taste";
 import { cn } from "@/lib/utils";
 
 export default async function ProfilePage({
@@ -73,6 +75,27 @@ export default async function ProfilePage({
     ]);
     isFollowing = Boolean(followRow);
     followsViewer = Boolean(followsBackRow);
+  }
+
+  let tasteTags: { name: string; tier: "core" | "exploring" }[] = [];
+  if (viewer && viewer.id === profile.id) {
+    const { data: affinityRows } = await supabase
+      .from("user_tag_affinity")
+      .select("score,last_reinforced_at,tags(name)")
+      .eq("user_id", viewer.id);
+
+    tasteTags = ((affinityRows ?? []) as unknown as {
+      score: number;
+      last_reinforced_at: string;
+      tags: { name: string } | null;
+    }[])
+      .map((row) => ({
+        name: row.tags?.name,
+        eff: effectiveScore(row.score, row.last_reinforced_at),
+      }))
+      .filter((r): r is { name: string; eff: number } => Boolean(r.name) && tasteTier(r.eff) !== "faded")
+      .sort((a, b) => b.eff - a.eff)
+      .map((r) => ({ name: r.name, tier: tasteTier(r.eff) as "core" | "exploring" }));
   }
 
   let tabContent;
@@ -206,6 +229,8 @@ export default async function ProfilePage({
               ))}
             </div>
           )}
+
+          {viewer && viewer.id === profile.id && <TastePanel tags={tasteTags} />}
 
           <ProfileFollowStats
             profileId={profile.id}

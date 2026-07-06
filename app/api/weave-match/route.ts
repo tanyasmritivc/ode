@@ -1,14 +1,36 @@
 import { NextResponse } from "next/server";
+import type Anthropic from "@anthropic-ai/sdk";
 import { createClient } from "@/lib/supabase/server";
 import { anthropic, WEAVE_MATCH_MODEL } from "@/lib/anthropic";
 
-const SHORTLIST_CAP = 80;
+// Lower than the old text-only shortlist cap - every one of these now gets
+// its actual image fetched, base64-encoded, and sent to Claude, so the pool
+// has to stay small enough for that to be fast(ish) and affordable.
+const SHORTLIST_CAP = 30;
 const RESULT_CAP = 20;
 
-type Candidate = { id: string; title: string; tags: string[]; likeCount: number; createdAt: string };
+type AllowedMediaType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+const ALLOWED_IMAGE_TYPES = new Set<AllowedMediaType>([
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+]);
+
+type Candidate = {
+  id: string;
+  title: string;
+  caption: string | null;
+  tags: string[];
+  likeCount: number;
+  createdAt: string;
+  imageUrl: string;
+};
 type CandidateRow = {
   id: string;
   title: string;
+  caption: string | null;
+  image_url: string;
   created_at: string;
   post_tags: { tags: { name: string } | null }[] | null;
 };
@@ -39,6 +61,8 @@ export async function POST(request: Request) {
   try {
     orderedIds = await rankWithClaude(prompt, candidates);
   } catch {
+    // Claude call/parse failed entirely - fall back to plain tag matching.
+    // This obviously can't do vision; that's expected, it's just the safety net.
     orderedIds = keywordFallback(prompt, candidates);
   }
   orderedIds = orderedIds.slice(0, RESULT_CAP);
@@ -61,7 +85,7 @@ async function buildShortlist(
 
   const { data: titleMatches } = await supabase
     .from("posts")
-    .select("id,title,created_at,post_tags(tags(name))")
+    .select("id,title,caption,image_url,created_at,post_tags(tags(name))")
     .textSearch("title", prompt, { type: "websearch", config: "english" })
     .limit(SHORTLIST_CAP);
 
@@ -78,7 +102,7 @@ async function buildShortlist(
   if (tagNames.length > 0 && found.size < SHORTLIST_CAP) {
     const { data: byTag } = await supabase
       .from("posts")
-      .select("id,title,created_at,post_tags!inner(tags!inner(name))")
+      .select("id,title,caption,image_url,created_at,post_tags!inner(tags!inner(name))")
       .in("post_tags.tags.name", tagNames)
       .limit(SHORTLIST_CAP);
 
@@ -91,7 +115,7 @@ async function buildShortlist(
   if (found.size < 20) {
     const { data: recent } = await supabase
       .from("posts")
-      .select("id,title,created_at,post_tags(tags(name))")
+      .select("id,title,caption,image_url,created_at,post_tags(tags(name))")
       .order("created_at", { ascending: false })
       .limit(SHORTLIST_CAP);
 
@@ -109,6 +133,8 @@ function toCandidate(row: CandidateRow): Omit<Candidate, "likeCount"> {
   return {
     id: row.id,
     title: row.title,
+    caption: row.caption,
+    imageUrl: row.image_url,
     createdAt: row.created_at,
     tags: (row.post_tags ?? []).map((pt) => pt.tags?.name).filter((n): n is string => Boolean(n)),
   };
@@ -130,25 +156,94 @@ async function attachLikeCounts(
   return candidates.map((c) => ({ ...c, likeCount: counts.get(c.id) ?? 0 }));
 }
 
+// Fetches and base64-encodes one candidate's image server-side, since
+// Anthropic's API needs the actual bytes and can't fetch arbitrary URLs
+// itself. Returns null on any failure (network error, non-OK response,
+// timeout, or an unrecognized/unsupported content type) so the caller can
+// degrade that single candidate to a text-only entry instead of failing
+// the whole request over one bad image.
+async function fetchImageAsBase64(url: string): Promise<{ mediaType: AllowedMediaType; data: string } | null> {
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return null;
+
+    const contentType = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+    if (!ALLOWED_IMAGE_TYPES.has(contentType as AllowedMediaType)) return null;
+
+    const buf = await res.arrayBuffer();
+    return { mediaType: contentType as AllowedMediaType, data: Buffer.from(buf).toString("base64") };
+  } catch {
+    return null;
+  }
+}
+
+// Builds one interleaved content array: for every candidate, a text block
+// with its metadata immediately followed by its actual photo (or a plain
+// text note in place of the photo if that one image couldn't be fetched).
+async function buildCandidateContent(candidates: Candidate[]): Promise<Anthropic.Messages.ContentBlockParam[]> {
+  const images = await Promise.all(candidates.map((c) => fetchImageAsBase64(c.imageUrl)));
+
+  const blocks: Anthropic.Messages.ContentBlockParam[] = [];
+  candidates.forEach((c, i) => {
+    blocks.push({
+      type: "text",
+      text: JSON.stringify({
+        id: c.id,
+        title: c.title,
+        caption: c.caption,
+        tags: c.tags,
+        likeCount: c.likeCount,
+        createdAt: c.createdAt,
+      }),
+    });
+
+    const image = images[i];
+    if (image) {
+      blocks.push({
+        type: "image",
+        source: { type: "base64", media_type: image.mediaType, data: image.data },
+      });
+    } else {
+      blocks.push({ type: "text", text: "[photo unavailable for this candidate - judge on metadata alone]" });
+    }
+  });
+
+  return blocks;
+}
+
 async function rankWithClaude(prompt: string, candidates: Candidate[]): Promise<string[]> {
+  const candidateContent = await buildCandidateContent(candidates);
+
   const message = await anthropic.messages.create({
     model: WEAVE_MATCH_MODEL,
     max_tokens: 1536,
     system:
       "You rank photo posts from across a community's public library against a mood/theme/idea prompt. " +
-      "You will receive the prompt and a JSON array of candidate posts, each with an id, title, tags, likeCount, and createdAt. " +
-      "Do the semantic connection work yourself, not just literal word overlap - for example a prompt mentioning " +
-      "\"skin,\" \"health,\" \"beauty,\" or \"face\" should be understood as related to a post tagged \"skincare,\" even " +
-      "without an exact word match. Select and order at most 20 posts that genuinely fit the prompt, from best match " +
-      "to weakest. Among posts that fit reasonably well, favor a mix of popular posts (higher likeCount) and recent " +
-      "posts (newer createdAt) rather than pure semantic relevance alone - the final set should feel current and " +
-      "well-liked, not just tag-matched. Return ONLY a JSON object of the exact shape {\"matches\": [\"id\", ...]}, " +
-      "with no more than 20 ids, none invented that wasn't given to you, ordered best-to-weakest. Omit posts that " +
-      "don't fit at all. Do not include any text, explanation, or markdown formatting outside the JSON object.",
+      "For each candidate you'll receive a text block with its id, title, caption, tags, likeCount, and createdAt, " +
+      "immediately followed by that post's actual photo. Actually look at each photo - its subject, style, colors, " +
+      "and mood - and weigh what you genuinely see at least as much as the tags/caption text: a post with a strongly " +
+      "matching photo but a vague or missing caption should still be able to surface, and a post that's tag-matched " +
+      "but visually unrelated to the prompt should get filtered back out. Also do the semantic connection work on the " +
+      "text you're given, not just literal word overlap - for example a prompt mentioning \"skin,\" \"health,\" " +
+      "\"beauty,\" or \"face\" should be understood as related to a post tagged \"skincare,\" even without an exact " +
+      "word match. Select and order at most 20 posts that genuinely fit the prompt, from best match to weakest. " +
+      "Among posts that fit reasonably well, favor a mix of popular posts (higher likeCount) and recent posts (newer " +
+      "createdAt) rather than pure relevance alone - the final set should feel current and well-liked, not just " +
+      "tag-matched. Return ONLY a JSON object of the exact shape {\"matches\": [\"id\", ...]}, with no more than 20 " +
+      "ids, none invented that wasn't given to you, ordered best-to-weakest. Omit posts that don't fit at all. Do not " +
+      "include any text, explanation, or markdown formatting outside the JSON object.",
     messages: [
       {
         role: "user",
-        content: `Prompt: ${prompt}\n\nCandidates:\n${JSON.stringify(candidates)}`,
+        content: [
+          {
+            type: "text",
+            text:
+              `Prompt: ${prompt}\n\nBelow are ${candidates.length} candidate posts. Each one starts with a JSON ` +
+              "object of its metadata, immediately followed by that post's actual photo.",
+          },
+          ...candidateContent,
+        ],
       },
     ],
   });
@@ -169,9 +264,11 @@ async function rankWithClaude(prompt: string, candidates: Candidate[]): Promise<
 }
 
 // Plain keyword/tag overlap scoring - used if the Claude call fails or its
-// response can't be parsed, so Weave never just breaks. Ties (and the
-// no-keyword-hit case) are broken in favor of more-liked, more-recent posts,
-// mirroring the popularity/recency preference given to Claude above.
+// response can't be parsed, so Weave never just breaks. This is text-only by
+// design (no vision) - it's the safety net, not something to also upgrade
+// here. Ties (and the no-keyword-hit case) are broken in favor of
+// more-liked, more-recent posts, mirroring the popularity/recency preference
+// given to Claude above.
 function keywordFallback(prompt: string, candidates: Candidate[]): string[] {
   const words = prompt
     .toLowerCase()
@@ -179,7 +276,7 @@ function keywordFallback(prompt: string, candidates: Candidate[]): string[] {
     .filter((w) => w.length > 2);
 
   const scored = candidates.map((c) => {
-    const haystack = `${c.title} ${c.tags.join(" ")}`.toLowerCase();
+    const haystack = `${c.title} ${c.caption ?? ""} ${c.tags.join(" ")}`.toLowerCase();
     const score = words.reduce((acc, w) => (haystack.includes(w) ? acc + 1 : acc), 0);
     return { id: c.id, score, likeCount: c.likeCount, createdAt: c.createdAt };
   });
