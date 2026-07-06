@@ -211,7 +211,7 @@ async function hydrate(supabase: ReturnType<typeof createClient>, ids: string[])
 
   const { data } = await supabase
     .from("posts")
-    .select("id,title,caption,image_url,created_at,user_id,profiles(username,name,avatar_url),post_tags(tags(name))")
+    .select("id,title,caption,image_url,created_at,user_id,profiles!posts_user_id_fkey(username,name,avatar_url),post_tags(tags(name))")
     .in("id", ids);
 
   const byId = new Map(

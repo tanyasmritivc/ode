@@ -10,7 +10,7 @@ import type { PostWithAuthor } from "@/types/database";
 const PAGE_SIZE = 30;
 
 const PICKER_POST_SELECT =
-  "id,title,caption,image_url,created_at,user_id,profiles(username,name,avatar_url),post_tags(tags(name))";
+  "id,title,caption,image_url,created_at,user_id,profiles!posts_user_id_fkey(username,name,avatar_url),post_tags(tags(name))";
 
 type RawPost = {
   id: string;

@@ -11,7 +11,7 @@ export default async function WeaveDetailPage({ params }: { params: { id: string
   const { data: weave } = await supabase
     .from("weaves")
     .select(
-      "id,prompt,created_at,user_id,weave_posts(position,posts(id,title,caption,image_url,created_at,user_id,profiles(username,name,avatar_url),post_tags(tags(name))))"
+      "id,prompt,created_at,user_id,weave_posts(position,posts(id,title,caption,image_url,created_at,user_id,profiles!posts_user_id_fkey(username,name,avatar_url),post_tags(tags(name))))"
     )
     .eq("id", params.id)
     .order("position", { foreignTable: "weave_posts", ascending: true })
