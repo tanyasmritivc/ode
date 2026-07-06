@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { fetchPostsPage, fetchSuggested, topTagsFromPosts } from "@/lib/posts";
+import { fetchPostsPage, fetchSuggested, topTagsFromPosts, attachEngagement } from "@/lib/posts";
+import { createClient } from "@/lib/supabase/client";
 import type { PostWithAuthor } from "@/types/database";
 import { PostCard } from "@/components/PostCard";
 import { SuggestedRow } from "@/components/SuggestedRow";
@@ -21,6 +22,7 @@ export default function HomePage() {
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [viewerId, setViewerId] = useState<string | null>(null);
   const hasLoadedInitial = useRef(false);
 
   const allShownIds = batches.flatMap((b) => [
@@ -28,15 +30,20 @@ export default function HomePage() {
     ...b.suggested.map((p) => p.id),
   ]);
 
-  async function loadMore() {
+  async function loadMore(currentViewerId: string | null) {
     setLoading(true);
     setError(null);
     try {
-      const posts = await fetchPostsPage(offset, PAGE_SIZE);
-      const topTags = topTagsFromPosts(posts, 3);
-      const suggested = await fetchSuggested(topTags, [
+      const rawPosts = await fetchPostsPage(offset, PAGE_SIZE);
+      const topTags = topTagsFromPosts(rawPosts, 3);
+      const rawSuggested = await fetchSuggested(topTags, [
         ...allShownIds,
-        ...posts.map((p) => p.id),
+        ...rawPosts.map((p) => p.id),
+      ]);
+
+      const [posts, suggested] = await Promise.all([
+        attachEngagement(rawPosts, currentViewerId),
+        attachEngagement(rawSuggested, currentViewerId),
       ]);
 
       setBatches((prev) => [...prev, { posts, suggested }]);
@@ -52,7 +59,11 @@ export default function HomePage() {
   useEffect(() => {
     if (hasLoadedInitial.current) return;
     hasLoadedInitial.current = true;
-    loadMore();
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      setViewerId(data.user?.id ?? null);
+      loadMore(data.user?.id ?? null);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

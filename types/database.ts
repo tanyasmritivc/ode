@@ -58,6 +58,20 @@ export type Notification = {
   created_at: string;
 };
 
+export type Like = {
+  post_id: string;
+  user_id: string;
+  created_at: string;
+};
+
+export type Comment = {
+  id: string;
+  post_id: string;
+  user_id: string;
+  body: string;
+  created_at: string;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -101,10 +115,26 @@ export type Database = {
         Insert: Pick<Notification, "recipient_id" | "actor_id" | "type">;
         Update: Partial<Pick<Notification, "read">>;
       };
+      likes: {
+        Row: Like;
+        Insert: Pick<Like, "post_id" | "user_id">;
+        Update: Partial<Like>;
+      };
+      comments: {
+        Row: Comment;
+        Insert: Pick<Comment, "post_id" | "user_id" | "body">;
+        Update: Partial<Comment>;
+      };
     };
   };
 };
 
 // Convenience joined shapes used throughout the UI.
 export type PostWithTags = Post & { tags: string[] };
-export type PostWithAuthor = Post & { tags: string[]; author: Profile };
+export type PostWithAuthor = Post & {
+  tags: string[];
+  author: Profile;
+  likeCount?: number;
+  likedByMe?: boolean;
+  commentCount?: number;
+};

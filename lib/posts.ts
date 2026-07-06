@@ -63,6 +63,41 @@ export function topTagsFromPosts(posts: PostWithAuthor[], count = 3): string[] {
     .map(([tag]) => tag);
 }
 
+// Bulk-attaches like/comment counts (and the viewer's own liked state) to an
+// already-fetched page of posts in two queries total, rather than N+1 per card.
+export async function attachEngagement(
+  posts: PostWithAuthor[],
+  viewerId: string | null
+): Promise<PostWithAuthor[]> {
+  if (posts.length === 0) return posts;
+  const supabase = createClient();
+  const ids = posts.map((p) => p.id);
+
+  const [{ data: likeRows }, { data: commentRows }] = await Promise.all([
+    supabase.from("likes").select("post_id,user_id").in("post_id", ids),
+    supabase.from("comments").select("post_id").in("post_id", ids),
+  ]);
+
+  const likeCounts = new Map<string, number>();
+  const likedByMe = new Set<string>();
+  for (const row of likeRows ?? []) {
+    likeCounts.set(row.post_id, (likeCounts.get(row.post_id) ?? 0) + 1);
+    if (viewerId && row.user_id === viewerId) likedByMe.add(row.post_id);
+  }
+
+  const commentCounts = new Map<string, number>();
+  for (const row of commentRows ?? []) {
+    commentCounts.set(row.post_id, (commentCounts.get(row.post_id) ?? 0) + 1);
+  }
+
+  return posts.map((p) => ({
+    ...p,
+    likeCount: likeCounts.get(p.id) ?? 0,
+    likedByMe: likedByMe.has(p.id),
+    commentCount: commentCounts.get(p.id) ?? 0,
+  }));
+}
+
 export async function fetchSuggested(
   topTagNames: string[],
   excludeIds: string[],
