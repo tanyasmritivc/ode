@@ -60,7 +60,10 @@
       "Bash(node inspect-landing.mjs \"C:\\\\Users\\\\tanya\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-tanya-ode\\\\b6afc25f-6ea7-44cf-abe3-5e89338d3978\\\\scratchpad\\\\landing\\\\desktop.png\" 1440 1200)",
       "Bash(node footer-mobile-precise.mjs \"C:\\\\Users\\\\tanya\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-tanya-ode\\\\b6afc25f-6ea7-44cf-abe3-5e89338d3978\\\\scratchpad\\\\landing\\\\mobile-footer-fixed.png\")",
       "Bash(powershell -Command \"Get-Process -Id \\(Get-NetTCPConnection -LocalPort 9421 -ErrorAction SilentlyContinue\\).OwningProcess -ErrorAction SilentlyContinue | Stop-Process -Force\")",
-      "Bash(powershell -Command 'Get-CimInstance Win32_Process -Filter \"name='\\\\''node.exe'\\\\''\" | Where-Object { $_.CommandLine -like '\\\\''*next*'\\\\'' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }')"
+      "Bash(powershell -Command 'Get-CimInstance Win32_Process -Filter \"name='\\\\''node.exe'\\\\''\" | Where-Object { $_.CommandLine -like '\\\\''*next*'\\\\'' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }')",
+      "Bash(npm uninstall *)",
+      "Bash(npm install *)",
+      "Bash(grep -q \"Ready in\" /tmp/dev-server3.log)"
     ]
   }
 }

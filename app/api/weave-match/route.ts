@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
-import type Anthropic from "@anthropic-ai/sdk";
+import type OpenAI from "openai";
 import { createClient } from "@/lib/supabase/server";
-import { anthropic, WEAVE_MATCH_MODEL } from "@/lib/anthropic";
+import { openai, WEAVE_MATCH_MODEL } from "@/lib/openai";
 
 // Lower than the old text-only shortlist cap - every one of these now gets
-// its actual image fetched, base64-encoded, and sent to Claude, so the pool
-// has to stay small enough for that to be fast(ish) and affordable.
+// its actual image fetched, base64-encoded, and sent to the model, so the
+// pool has to stay small enough for that to be fast(ish) and affordable.
 const SHORTLIST_CAP = 30;
 const RESULT_CAP = 20;
 
@@ -59,9 +59,9 @@ export async function POST(request: Request) {
 
   let orderedIds: string[];
   try {
-    orderedIds = await rankWithClaude(prompt, candidates);
+    orderedIds = await rankWithOpenAI(prompt, candidates);
   } catch {
-    // Claude call/parse failed entirely - fall back to plain tag matching.
+    // The AI call/parse failed entirely - fall back to plain tag matching.
     // This obviously can't do vision; that's expected, it's just the safety net.
     orderedIds = keywordFallback(prompt, candidates);
   }
@@ -156,12 +156,12 @@ async function attachLikeCounts(
   return candidates.map((c) => ({ ...c, likeCount: counts.get(c.id) ?? 0 }));
 }
 
-// Fetches and base64-encodes one candidate's image server-side, since
-// Anthropic's API needs the actual bytes and can't fetch arbitrary URLs
-// itself. Returns null on any failure (network error, non-OK response,
-// timeout, or an unrecognized/unsupported content type) so the caller can
-// degrade that single candidate to a text-only entry instead of failing
-// the whole request over one bad image.
+// Fetches and base64-encodes one candidate's image server-side, since the
+// OpenAI API needs the actual bytes (as a data: URL) and can't fetch
+// arbitrary URLs itself. Returns null on any failure (network error, non-OK
+// response, timeout, or an unrecognized/unsupported content type) so the
+// caller can degrade that single candidate to a text-only entry instead of
+// failing the whole request over one bad image.
 async function fetchImageAsBase64(url: string): Promise<{ mediaType: AllowedMediaType; data: string } | null> {
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
@@ -177,15 +177,18 @@ async function fetchImageAsBase64(url: string): Promise<{ mediaType: AllowedMedi
   }
 }
 
-// Builds one interleaved content array: for every candidate, a text block
-// with its metadata immediately followed by its actual photo (or a plain
-// text note in place of the photo if that one image couldn't be fetched).
-async function buildCandidateContent(candidates: Candidate[]): Promise<Anthropic.Messages.ContentBlockParam[]> {
+// Builds one interleaved content array: for every candidate, a text part
+// with its metadata immediately followed by its actual photo as a data: URL
+// (or a plain text note in place of the photo if that one image couldn't be
+// fetched).
+async function buildCandidateContent(
+  candidates: Candidate[]
+): Promise<OpenAI.Chat.Completions.ChatCompletionContentPart[]> {
   const images = await Promise.all(candidates.map((c) => fetchImageAsBase64(c.imageUrl)));
 
-  const blocks: Anthropic.Messages.ContentBlockParam[] = [];
+  const parts: OpenAI.Chat.Completions.ChatCompletionContentPart[] = [];
   candidates.forEach((c, i) => {
-    blocks.push({
+    parts.push({
       type: "text",
       text: JSON.stringify({
         id: c.id,
@@ -199,40 +202,44 @@ async function buildCandidateContent(candidates: Candidate[]): Promise<Anthropic
 
     const image = images[i];
     if (image) {
-      blocks.push({
-        type: "image",
-        source: { type: "base64", media_type: image.mediaType, data: image.data },
+      parts.push({
+        type: "image_url",
+        image_url: { url: `data:${image.mediaType};base64,${image.data}` },
       });
     } else {
-      blocks.push({ type: "text", text: "[photo unavailable for this candidate - judge on metadata alone]" });
+      parts.push({ type: "text", text: "[photo unavailable for this candidate - judge on metadata alone]" });
     }
   });
 
-  return blocks;
+  return parts;
 }
 
-async function rankWithClaude(prompt: string, candidates: Candidate[]): Promise<string[]> {
+async function rankWithOpenAI(prompt: string, candidates: Candidate[]): Promise<string[]> {
   const candidateContent = await buildCandidateContent(candidates);
 
-  const message = await anthropic.messages.create({
+  const response = await openai.chat.completions.create({
     model: WEAVE_MATCH_MODEL,
     max_tokens: 1536,
-    system:
-      "You rank photo posts from across a community's public library against a mood/theme/idea prompt. " +
-      "For each candidate you'll receive a text block with its id, title, caption, tags, likeCount, and createdAt, " +
-      "immediately followed by that post's actual photo. Actually look at each photo - its subject, style, colors, " +
-      "and mood - and weigh what you genuinely see at least as much as the tags/caption text: a post with a strongly " +
-      "matching photo but a vague or missing caption should still be able to surface, and a post that's tag-matched " +
-      "but visually unrelated to the prompt should get filtered back out. Also do the semantic connection work on the " +
-      "text you're given, not just literal word overlap - for example a prompt mentioning \"skin,\" \"health,\" " +
-      "\"beauty,\" or \"face\" should be understood as related to a post tagged \"skincare,\" even without an exact " +
-      "word match. Select and order at most 20 posts that genuinely fit the prompt, from best match to weakest. " +
-      "Among posts that fit reasonably well, favor a mix of popular posts (higher likeCount) and recent posts (newer " +
-      "createdAt) rather than pure relevance alone - the final set should feel current and well-liked, not just " +
-      "tag-matched. Return ONLY a JSON object of the exact shape {\"matches\": [\"id\", ...]}, with no more than 20 " +
-      "ids, none invented that wasn't given to you, ordered best-to-weakest. Omit posts that don't fit at all. Do not " +
-      "include any text, explanation, or markdown formatting outside the JSON object.",
+    response_format: { type: "json_object" },
     messages: [
+      {
+        role: "system",
+        content:
+          "You rank photo posts from across a community's public library against a mood/theme/idea prompt. " +
+          "For each candidate you'll receive a text part with its id, title, caption, tags, likeCount, and createdAt, " +
+          "immediately followed by that post's actual photo. Actually look at each photo - its subject, style, colors, " +
+          "and mood - and weigh what you genuinely see at least as much as the tags/caption text: a post with a strongly " +
+          "matching photo but a vague or missing caption should still be able to surface, and a post that's tag-matched " +
+          "but visually unrelated to the prompt should get filtered back out. Also do the semantic connection work on the " +
+          "text you're given, not just literal word overlap - for example a prompt mentioning \"skin,\" \"health,\" " +
+          "\"beauty,\" or \"face\" should be understood as related to a post tagged \"skincare,\" even without an exact " +
+          "word match. Select and order at most 20 posts that genuinely fit the prompt, from best match to weakest. " +
+          "Among posts that fit reasonably well, favor a mix of popular posts (higher likeCount) and recent posts (newer " +
+          "createdAt) rather than pure relevance alone - the final set should feel current and well-liked, not just " +
+          "tag-matched. Return ONLY a JSON object of the exact shape {\"ids\": [\"id\", ...]}, with no more than 20 " +
+          "ids, none invented that wasn't given to you, ordered best-to-weakest. Omit posts that don't fit at all. Do not " +
+          "include any text, explanation, or markdown formatting outside the JSON object.",
+      },
       {
         role: "user",
         content: [
@@ -248,27 +255,25 @@ async function rankWithClaude(prompt: string, candidates: Candidate[]): Promise<
     ],
   });
 
-  const block = message.content.find((b) => b.type === "text");
-  const text = block && block.type === "text" ? block.text : "";
-  const jsonText = text.replace(/```json|```/g, "").trim();
-  const parsed = JSON.parse(jsonText);
+  const raw = response.choices[0]?.message?.content ?? "";
+  const parsed = JSON.parse(raw);
 
-  if (!parsed || !Array.isArray(parsed.matches)) {
+  if (!parsed || !Array.isArray(parsed.ids)) {
     throw new Error("Malformed ranking response.");
   }
 
   const validIds = new Set(candidates.map((c) => c.id));
-  const ids = parsed.matches.filter((id: unknown): id is string => typeof id === "string" && validIds.has(id));
+  const ids = parsed.ids.filter((id: unknown): id is string => typeof id === "string" && validIds.has(id));
   if (ids.length === 0) throw new Error("No valid matches in ranking response.");
   return ids;
 }
 
-// Plain keyword/tag overlap scoring - used if the Claude call fails or its
+// Plain keyword/tag overlap scoring - used if the AI call fails or its
 // response can't be parsed, so Weave never just breaks. This is text-only by
 // design (no vision) - it's the safety net, not something to also upgrade
 // here. Ties (and the no-keyword-hit case) are broken in favor of
 // more-liked, more-recent posts, mirroring the popularity/recency preference
-// given to Claude above.
+// given to the model above.
 function keywordFallback(prompt: string, candidates: Candidate[]): string[] {
   const words = prompt
     .toLowerCase()
