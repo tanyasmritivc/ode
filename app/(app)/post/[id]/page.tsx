@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Avatar } from "@/components/Avatar";
-import { AutoRatioImage } from "@/components/AutoRatioImage";
+import { PostDetailImage } from "@/components/PostDetailImage";
 import { DeletePostButton } from "@/components/DeletePostButton";
 import { timeAgo } from "@/lib/utils";
 
@@ -37,14 +37,12 @@ export default async function PostDetailPage({ params }: { params: { id: string 
 
   return (
     <div className="mx-auto max-w-3xl">
-      <div className="rounded-card overflow-hidden border border-hairline bg-panel">
-        <AutoRatioImage
-          src={post.image_url}
-          alt={post.title}
-          sizes="(min-width: 1024px) 768px, (min-width: 768px) 90vw, 100vw"
-          priority
-        />
-      </div>
+      <PostDetailImage
+        src={post.image_url}
+        alt={post.title}
+        sizes="(min-width: 1024px) 768px, (min-width: 768px) 90vw, 100vw"
+        priority
+      />
 
       <div className="mt-6 flex items-start justify-between gap-4">
         <div>

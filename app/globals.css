@@ -77,6 +77,25 @@ body {
   margin-bottom: 16px;
 }
 
+/* Fixed bottom tab bar (mobile only): grows into the iPhone home-indicator
+   safe area rather than letting content sit under it. */
+.mobile-tab-bar {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+/* Matches .mobile-tab-bar's total height (64px + safe area) so page content
+   never ends up hidden behind the fixed bar; reverts to the normal vertical
+   rhythm once the tab bar itself is hidden at the sm breakpoint. */
+.mobile-content-offset {
+  padding-bottom: calc(64px + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 640px) {
+  .mobile-content-offset {
+    padding-bottom: 2rem;
+  }
+}
+
 .hover-lift {
   transition:
     transform 0.15s ease,

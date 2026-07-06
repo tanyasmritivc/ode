@@ -6,6 +6,7 @@ import { FollowButton } from "@/components/FollowButton";
 import { SquareGrid } from "@/components/SquareGrid";
 import { WeaveCard } from "@/components/WeaveCard";
 import { EmptyState } from "@/components/EmptyState";
+import { ProfileFollowStats } from "@/components/ProfileFollowStats";
 import { cn } from "@/lib/utils";
 
 export default async function ProfilePage({
@@ -42,6 +43,16 @@ export default async function ProfilePage({
         .select("*", { count: "exact", head: true })
         .eq("follower_id", profile.id),
     ]);
+
+  let hasUnreadNotifications = false;
+  if (viewer && viewer.id === profile.id) {
+    const { count } = await supabase
+      .from("notifications")
+      .select("*", { count: "exact", head: true })
+      .eq("recipient_id", viewer.id)
+      .eq("read", false);
+    hasUnreadNotifications = (count ?? 0) > 0;
+  }
 
   let isFollowing = false;
   let followsViewer = false;
@@ -127,7 +138,7 @@ export default async function ProfilePage({
         <Avatar name={profile.name} src={profile.avatar_url} size={96} />
 
         <div className="flex-1">
-          <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-xl font-semibold tracking-tight">{profile.name}</h1>
@@ -147,6 +158,22 @@ export default async function ProfilePage({
                   className="rounded-full border border-hairline text-sm font-medium px-5 py-2 hover:border-ink transition-colors"
                 >
                   Edit profile
+                </Link>
+                {/* Mobile has no room for a bell in the 5-tab bottom bar, so
+                    this is the reachable path there (desktop already has the
+                    bell in the top nav) - full page, not a dropdown. */}
+                <Link
+                  href="/notifications"
+                  aria-label="Notifications"
+                  className="relative rounded-full border border-hairline w-9 h-9 flex items-center justify-center text-secondary hover:text-ink hover:border-ink transition-colors sm:hidden"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                  </svg>
+                  {hasUnreadNotifications && (
+                    <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-ink border border-white" />
+                  )}
                 </Link>
                 <Link
                   href="/settings"
@@ -180,20 +207,13 @@ export default async function ProfilePage({
             </div>
           )}
 
-          <div className="flex items-center gap-5 mt-4 font-mono-tag text-sm">
-            <span>
-              <strong className="font-medium">{postCount ?? 0}</strong>{" "}
-              <span className="text-secondary">posts</span>
-            </span>
-            <span>
-              <strong className="font-medium">{followerCount ?? 0}</strong>{" "}
-              <span className="text-secondary">followers</span>
-            </span>
-            <span>
-              <strong className="font-medium">{followingCount ?? 0}</strong>{" "}
-              <span className="text-secondary">following</span>
-            </span>
-          </div>
+          <ProfileFollowStats
+            profileId={profile.id}
+            postCount={postCount ?? 0}
+            followerCount={followerCount ?? 0}
+            followingCount={followingCount ?? 0}
+            viewerId={viewer?.id ?? null}
+          />
         </div>
       </div>
 

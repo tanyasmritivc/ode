@@ -5,6 +5,7 @@ export type Profile = {
   bio: string;
   avatar_url: string | null;
   top_interests: string[];
+  notify_on_follow?: boolean | null;
   created_at: string;
 };
 
@@ -46,6 +47,17 @@ export type WeavePost = {
   position: number;
 };
 
+export type NotificationType = "follow" | "follow_back";
+
+export type Notification = {
+  id: string;
+  recipient_id: string;
+  actor_id: string;
+  type: NotificationType;
+  read: boolean;
+  created_at: string;
+};
+
 export type Database = {
   public: {
     Tables: {
@@ -83,6 +95,11 @@ export type Database = {
         Row: WeavePost;
         Insert: WeavePost;
         Update: Partial<WeavePost>;
+      };
+      notifications: {
+        Row: Notification;
+        Insert: Pick<Notification, "recipient_id" | "actor_id" | "type">;
+        Update: Partial<Pick<Notification, "read">>;
       };
     };
   };

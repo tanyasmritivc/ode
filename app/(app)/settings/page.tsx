@@ -5,8 +5,41 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Modal } from "@/components/Modal";
 import { Spinner } from "@/components/Spinner";
+import { LogoutButton } from "@/components/LogoutButton";
+import { cn } from "@/lib/utils";
 
 type Status = { type: "error" | "success"; message: string };
+
+function ToggleSwitch({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => onChange(!checked)}
+      className={cn(
+        "relative w-11 h-6 rounded-full transition-colors shrink-0",
+        checked ? "bg-ink" : "bg-hairline"
+      )}
+    >
+      <span
+        className={cn(
+          "absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform",
+          checked ? "translate-x-5" : "translate-x-0"
+        )}
+      />
+    </button>
+  );
+}
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -22,6 +55,9 @@ export default function SettingsPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordStatus, setPasswordStatus] = useState<Status | null>(null);
   const [passwordSaving, setPasswordSaving] = useState(false);
+
+  const [notifyOnFollow, setNotifyOnFollow] = useState(true);
+  const [notifySaving, setNotifySaving] = useState(false);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState("");
@@ -41,10 +77,13 @@ export default function SettingsPage() {
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("username")
+        .select("username, notify_on_follow")
         .eq("id", data.user.id)
         .single();
-      if (profile) setUsername(profile.username);
+      if (profile) {
+        setUsername(profile.username);
+        setNotifyOnFollow(profile.notify_on_follow ?? true);
+      }
     })();
   }, [router]);
 
@@ -89,6 +128,16 @@ export default function SettingsPage() {
       setNewPassword("");
       setConfirmPassword("");
     }
+  }
+
+  async function handleNotifyToggle(value: boolean) {
+    if (!userId) return;
+    setNotifyOnFollow(value);
+    setNotifySaving(true);
+    const supabase = createClient();
+    const { error } = await supabase.from("profiles").update({ notify_on_follow: value }).eq("id", userId);
+    setNotifySaving(false);
+    if (error) setNotifyOnFollow(!value);
   }
 
   const canDelete =
@@ -200,6 +249,38 @@ export default function SettingsPage() {
             {passwordSaving ? "Saving…" : "Update password"}
           </button>
         </form>
+
+        <div className="h-px bg-hairline" />
+
+        <div className="flex items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-sm font-medium">Session</p>
+            <p className="text-sm text-secondary mt-0.5 truncate">Signed in as @{username}</p>
+          </div>
+          <div className="shrink-0 whitespace-nowrap">
+            <LogoutButton />
+          </div>
+        </div>
+      </section>
+
+      <section className="glass rounded-card p-6 flex flex-col gap-4">
+        <h2 className="font-mono-tag text-xs text-secondary uppercase tracking-wide">Notifications</h2>
+        <label className="flex items-center justify-between gap-4 cursor-pointer">
+          <div>
+            <p className="text-sm font-medium">New followers</p>
+            <p className="text-xs text-secondary mt-0.5">Get notified when someone follows you.</p>
+          </div>
+          <ToggleSwitch checked={notifyOnFollow} onChange={handleNotifyToggle} label="Notify me about new followers" />
+        </label>
+        {notifySaving && <p className="text-xs text-secondary">Saving…</p>}
+      </section>
+
+      <section className="rounded-card border border-hairline p-6 flex flex-col gap-2">
+        <h2 className="font-mono-tag text-xs text-secondary uppercase tracking-wide">Privacy</h2>
+        <p className="text-sm text-secondary leading-relaxed">
+          Every post and profile on Ode is public — anyone can view your posts, profile, and
+          Weaves. Private accounts aren&rsquo;t supported yet.
+        </p>
       </section>
 
       <section className="rounded-card border border-ink/15 bg-ink/[0.03] p-6 flex flex-col gap-3">
@@ -216,7 +297,7 @@ export default function SettingsPage() {
         </button>
       </section>
 
-      <Modal open={deleteOpen} onClose={closeDeleteModal}>
+      <Modal open={deleteOpen} onClose={closeDeleteModal} panelClassName="sm:max-w-sm">
         <h2 className="text-lg font-semibold tracking-tight">Delete your account?</h2>
         <p className="text-sm text-secondary mt-2">
           This is permanent. Type <strong className="text-ink">DELETE</strong> or your username{" "}

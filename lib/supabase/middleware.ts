@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PROTECTED_PREFIXES = ["/feed", "/post/new", "/weave", "/profile/edit", "/settings"];
+const PROTECTED_PREFIXES = ["/feed", "/post/new", "/weave", "/profile/edit", "/settings", "/notifications"];
 const LOGGED_OUT_ONLY_PATHS = ["/", "/login", "/signup"];
 
 export async function updateSession(request: NextRequest) {
