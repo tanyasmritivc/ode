@@ -258,13 +258,24 @@ body {
 }
 
 /* Full-bleed animated background for the landing page hero — fixed to the
-   viewport (not a section), sits behind everything via z-index: -1. */
+   viewport (not a section), sits behind everything via z-index: 0 (z-index:
+   -1 previously failed to composite in this Chrome build - see drift-1/2/3
+   usage below). A static multi-stop mesh gradient provides the color wash
+   even before the animated blobs move on top of it, so the page never reads
+   as flat gray waiting for an animation frame. Every actual UI element
+   (headline, buttons, card borders/text) stays pure black/white/gray per the
+   monochrome design language - only this ambient background carries color.
+*/
 .landing-bg {
   position: fixed;
   inset: 0;
   z-index: 0;
   overflow: hidden;
-  background: #f2f2f4;
+  background:
+    radial-gradient(ellipse 70% 55% at 12% 15%, rgba(160, 196, 250, 0.65), transparent 60%),
+    radial-gradient(ellipse 65% 55% at 88% 12%, rgba(210, 180, 246, 0.6), transparent 60%),
+    radial-gradient(ellipse 70% 60% at 50% 95%, rgba(248, 190, 220, 0.55), transparent 60%),
+    #fbfbfc;
 }
 
 .landing-bg .blob {
@@ -273,33 +284,33 @@ body {
 }
 
 .landing-bg .blob-1 {
-  width: 600px;
-  height: 600px;
-  background: #b4b4ba;
-  opacity: 0.75;
-  filter: blur(65px);
+  width: 640px;
+  height: 640px;
+  background: #a9c8f5;
+  opacity: 0.55;
+  filter: blur(75px);
   top: -10%;
   left: -10%;
   animation: drift-1 22s ease-in-out infinite alternate;
 }
 
 .landing-bg .blob-2 {
-  width: 500px;
-  height: 500px;
-  background: #6b6b70;
-  opacity: 0.55;
-  filter: blur(70px);
+  width: 560px;
+  height: 560px;
+  background: #cbb3f2;
+  opacity: 0.5;
+  filter: blur(80px);
   top: 30%;
   right: -15%;
   animation: drift-2 26s ease-in-out infinite alternate;
 }
 
 .landing-bg .blob-3 {
-  width: 450px;
-  height: 450px;
-  background: #a5a5ab;
-  opacity: 0.7;
-  filter: blur(65px);
+  width: 520px;
+  height: 520px;
+  background: #f6b8d8;
+  opacity: 0.5;
+  filter: blur(75px);
   bottom: -15%;
   left: 20%;
   animation: drift-3 20s ease-in-out infinite alternate;
