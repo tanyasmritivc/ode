@@ -2,8 +2,26 @@ import Link from "next/link";
 import type { PostWithAuthor } from "@/types/database";
 import { Avatar } from "@/components/Avatar";
 import { AutoRatioImage } from "@/components/AutoRatioImage";
+import { LikeButton } from "@/components/LikeButton";
 
-export function PostCard({ post }: { post: PostWithAuthor }) {
+function CommentIcon() {
+  return (
+    <svg
+      width="15"
+      height="15"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5Z" />
+    </svg>
+  );
+}
+
+export function PostCard({ post, viewerId }: { post: PostWithAuthor; viewerId?: string | null }) {
   return (
     <Link
       href={`/post/${post.id}`}
@@ -32,6 +50,19 @@ export function PostCard({ post }: { post: PostWithAuthor }) {
             ))}
           </div>
         )}
+        <div className="flex items-center gap-3 mt-2">
+          <LikeButton
+            postId={post.id}
+            viewerId={viewerId ?? null}
+            initiallyLiked={post.likedByMe ?? false}
+            initialCount={post.likeCount ?? 0}
+            size="sm"
+          />
+          <span className="flex items-center gap-1 text-xs text-secondary">
+            <CommentIcon />
+            <span className="font-mono-tag">{post.commentCount ?? 0}</span>
+          </span>
+        </div>
       </div>
     </Link>
   );

@@ -2,12 +2,14 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { anthropic, WEAVE_MATCH_MODEL } from "@/lib/anthropic";
 
-const SHORTLIST_CAP = 50;
+const SHORTLIST_CAP = 80;
+const RESULT_CAP = 20;
 
-type Candidate = { id: string; title: string; tags: string[] };
+type Candidate = { id: string; title: string; tags: string[]; likeCount: number; createdAt: string };
 type CandidateRow = {
   id: string;
   title: string;
+  created_at: string;
   post_tags: { tags: { name: string } | null }[] | null;
 };
 
@@ -39,25 +41,27 @@ export async function POST(request: Request) {
   } catch {
     orderedIds = keywordFallback(prompt, candidates);
   }
+  orderedIds = orderedIds.slice(0, RESULT_CAP);
 
   const results = await hydrate(supabase, orderedIds);
   return NextResponse.json({ results });
 }
 
-// Cheap Postgres full-text search over everyone's tags/titles (posts are
-// publicly readable per RLS), so we never ship the whole catalog to the LLM.
-// If FTS comes up thin (common for mood/vibe prompts with no literal keyword
-// overlap), top up with the most recent posts site-wide so Claude still has a
-// reasonably rich set to reason over.
+// Cheap Postgres full-text search (websearch_to_tsquery, via the GIN indexes
+// on posts.title/tags.name) over everyone's tags/titles - posts are publicly
+// readable per RLS, so we never ship the whole catalog to the LLM. Title and
+// tag matches are unioned unconditionally (not gated on one running short) to
+// give the AI a genuinely wide pool, and a recency top-up fills in the rest
+// for mood/vibe prompts with no literal keyword overlap.
 async function buildShortlist(
   supabase: ReturnType<typeof createClient>,
   prompt: string
 ): Promise<Candidate[]> {
-  const found = new Map<string, Candidate>();
+  const found = new Map<string, Omit<Candidate, "likeCount">>();
 
   const { data: titleMatches } = await supabase
     .from("posts")
-    .select("id,title,post_tags(tags(name))")
+    .select("id,title,created_at,post_tags(tags(name))")
     .textSearch("title", prompt, { type: "websearch", config: "english" })
     .limit(SHORTLIST_CAP);
 
@@ -65,30 +69,29 @@ async function buildShortlist(
     found.set(row.id, toCandidate(row));
   }
 
-  if (found.size < SHORTLIST_CAP) {
-    const { data: tagMatches } = await supabase
-      .from("tags")
-      .select("name")
-      .textSearch("name", prompt, { type: "websearch", config: "english" });
+  const { data: tagMatches } = await supabase
+    .from("tags")
+    .select("name")
+    .textSearch("name", prompt, { type: "websearch", config: "english" });
 
-    const tagNames = (tagMatches ?? []).map((t) => t.name);
-    if (tagNames.length > 0) {
-      const { data: byTag } = await supabase
-        .from("posts")
-        .select("id,title,post_tags!inner(tags!inner(name))")
-        .in("post_tags.tags.name", tagNames)
-        .limit(SHORTLIST_CAP);
+  const tagNames = (tagMatches ?? []).map((t) => t.name);
+  if (tagNames.length > 0 && found.size < SHORTLIST_CAP) {
+    const { data: byTag } = await supabase
+      .from("posts")
+      .select("id,title,created_at,post_tags!inner(tags!inner(name))")
+      .in("post_tags.tags.name", tagNames)
+      .limit(SHORTLIST_CAP);
 
-      for (const row of (byTag ?? []) as unknown as CandidateRow[]) {
-        if (!found.has(row.id)) found.set(row.id, toCandidate(row));
-      }
+    for (const row of (byTag ?? []) as unknown as CandidateRow[]) {
+      if (found.size >= SHORTLIST_CAP) break;
+      if (!found.has(row.id)) found.set(row.id, toCandidate(row));
     }
   }
 
-  if (found.size < 10) {
+  if (found.size < 20) {
     const { data: recent } = await supabase
       .from("posts")
-      .select("id,title,post_tags(tags(name))")
+      .select("id,title,created_at,post_tags(tags(name))")
       .order("created_at", { ascending: false })
       .limit(SHORTLIST_CAP);
 
@@ -98,27 +101,50 @@ async function buildShortlist(
     }
   }
 
-  return Array.from(found.values()).slice(0, SHORTLIST_CAP);
+  const withoutLikes = Array.from(found.values()).slice(0, SHORTLIST_CAP);
+  return attachLikeCounts(supabase, withoutLikes);
 }
 
-function toCandidate(row: CandidateRow): Candidate {
+function toCandidate(row: CandidateRow): Omit<Candidate, "likeCount"> {
   return {
     id: row.id,
     title: row.title,
+    createdAt: row.created_at,
     tags: (row.post_tags ?? []).map((pt) => pt.tags?.name).filter((n): n is string => Boolean(n)),
   };
+}
+
+async function attachLikeCounts(
+  supabase: ReturnType<typeof createClient>,
+  candidates: Omit<Candidate, "likeCount">[]
+): Promise<Candidate[]> {
+  if (candidates.length === 0) return [];
+  const ids = candidates.map((c) => c.id);
+  const { data: likeRows } = await supabase.from("likes").select("post_id").in("post_id", ids);
+
+  const counts = new Map<string, number>();
+  for (const row of likeRows ?? []) {
+    counts.set(row.post_id, (counts.get(row.post_id) ?? 0) + 1);
+  }
+
+  return candidates.map((c) => ({ ...c, likeCount: counts.get(c.id) ?? 0 }));
 }
 
 async function rankWithClaude(prompt: string, candidates: Candidate[]): Promise<string[]> {
   const message = await anthropic.messages.create({
     model: WEAVE_MATCH_MODEL,
-    max_tokens: 1024,
+    max_tokens: 1536,
     system:
       "You rank photo posts from across a community's public library against a mood/theme/idea prompt. " +
-      "You will receive the prompt and a JSON array of candidate posts, each with an id, title, and tags. " +
-      "Return ONLY a JSON object of the exact shape {\"matches\": [\"id\", ...]} listing the ids of posts " +
-      "that genuinely fit the prompt, ordered from best match to weakest, with no id invented that wasn't given to you. " +
-      "Omit posts that don't fit at all. Do not include any text, explanation, or markdown formatting outside the JSON object.",
+      "You will receive the prompt and a JSON array of candidate posts, each with an id, title, tags, likeCount, and createdAt. " +
+      "Do the semantic connection work yourself, not just literal word overlap - for example a prompt mentioning " +
+      "\"skin,\" \"health,\" \"beauty,\" or \"face\" should be understood as related to a post tagged \"skincare,\" even " +
+      "without an exact word match. Select and order at most 20 posts that genuinely fit the prompt, from best match " +
+      "to weakest. Among posts that fit reasonably well, favor a mix of popular posts (higher likeCount) and recent " +
+      "posts (newer createdAt) rather than pure semantic relevance alone - the final set should feel current and " +
+      "well-liked, not just tag-matched. Return ONLY a JSON object of the exact shape {\"matches\": [\"id\", ...]}, " +
+      "with no more than 20 ids, none invented that wasn't given to you, ordered best-to-weakest. Omit posts that " +
+      "don't fit at all. Do not include any text, explanation, or markdown formatting outside the JSON object.",
     messages: [
       {
         role: "user",
@@ -143,7 +169,9 @@ async function rankWithClaude(prompt: string, candidates: Candidate[]): Promise<
 }
 
 // Plain keyword/tag overlap scoring - used if the Claude call fails or its
-// response can't be parsed, so Weave never just breaks.
+// response can't be parsed, so Weave never just breaks. Ties (and the
+// no-keyword-hit case) are broken in favor of more-liked, more-recent posts,
+// mirroring the popularity/recency preference given to Claude above.
 function keywordFallback(prompt: string, candidates: Candidate[]): string[] {
   const words = prompt
     .toLowerCase()
@@ -153,11 +181,15 @@ function keywordFallback(prompt: string, candidates: Candidate[]): string[] {
   const scored = candidates.map((c) => {
     const haystack = `${c.title} ${c.tags.join(" ")}`.toLowerCase();
     const score = words.reduce((acc, w) => (haystack.includes(w) ? acc + 1 : acc), 0);
-    return { id: c.id, score };
+    return { id: c.id, score, likeCount: c.likeCount, createdAt: c.createdAt };
   });
 
   const withHits = scored.filter((s) => s.score > 0);
-  const ranked = (withHits.length > 0 ? withHits : scored).sort((a, b) => b.score - a.score);
+  const ranked = (withHits.length > 0 ? withHits : scored).sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    if (b.likeCount !== a.likeCount) return b.likeCount - a.likeCount;
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
   return ranked.map((s) => s.id);
 }
 

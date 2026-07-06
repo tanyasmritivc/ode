@@ -4,6 +4,8 @@ import { createClient } from "@/lib/supabase/server";
 import { Avatar } from "@/components/Avatar";
 import { PostDetailImage } from "@/components/PostDetailImage";
 import { DeletePostButton } from "@/components/DeletePostButton";
+import { LikeButton } from "@/components/LikeButton";
+import { CommentSection, type CommentRow } from "@/components/CommentSection";
 import { timeAgo } from "@/lib/utils";
 
 export default async function PostDetailPage({ params }: { params: { id: string } }) {
@@ -22,6 +24,34 @@ export default async function PostDetailPage({ params }: { params: { id: string 
   const {
     data: { user: viewer },
   } = await supabase.auth.getUser();
+
+  const [{ data: likeRows }, { data: commentRows }] = await Promise.all([
+    supabase.from("likes").select("user_id").eq("post_id", post.id),
+    supabase
+      .from("comments")
+      .select("id,body,created_at,user_id,profiles(username,name,avatar_url)")
+      .eq("post_id", post.id)
+      .order("created_at", { ascending: true }),
+  ]);
+
+  const likeCount = likeRows?.length ?? 0;
+  const likedByMe = Boolean(viewer && likeRows?.some((r) => r.user_id === viewer.id));
+
+  const comments: CommentRow[] = ((commentRows ?? []) as unknown as {
+    id: string;
+    body: string;
+    created_at: string;
+    user_id: string;
+    profiles: { username: string; name: string; avatar_url: string | null } | null;
+  }[])
+    .filter((c) => c.profiles != null)
+    .map((c) => ({
+      id: c.id,
+      body: c.body,
+      created_at: c.created_at,
+      user_id: c.user_id,
+      author: c.profiles!,
+    }));
 
   const author = post.profiles as unknown as {
     username: string;
@@ -54,6 +84,15 @@ export default async function PostDetailPage({ params }: { params: { id: string 
         )}
       </div>
 
+      <div className="mt-4">
+        <LikeButton
+          postId={post.id}
+          viewerId={viewer?.id ?? null}
+          initiallyLiked={likedByMe}
+          initialCount={likeCount}
+        />
+      </div>
+
       {post.caption && <p className="text-sm text-ink mt-4 leading-relaxed">{post.caption}</p>}
 
       {tags.length > 0 && (
@@ -79,6 +118,8 @@ export default async function PostDetailPage({ params }: { params: { id: string 
           <p className="font-mono-tag text-xs text-secondary">@{author.username}</p>
         </div>
       </Link>
+
+      <CommentSection postId={post.id} viewerId={viewer?.id ?? null} initialComments={comments} />
     </div>
   );
 }

@@ -36,15 +36,12 @@ export default function HomePage() {
     try {
       const rawPosts = await fetchPostsPage(offset, PAGE_SIZE);
       const topTags = topTagsFromPosts(rawPosts, 3);
-      const rawSuggested = await fetchSuggested(topTags, [
+      const suggested = await fetchSuggested(topTags, [
         ...allShownIds,
         ...rawPosts.map((p) => p.id),
       ]);
 
-      const [posts, suggested] = await Promise.all([
-        attachEngagement(rawPosts, currentViewerId),
-        attachEngagement(rawSuggested, currentViewerId),
-      ]);
+      const posts = await attachEngagement(rawPosts, currentViewerId);
 
       setBatches((prev) => [...prev, { posts, suggested }]);
       setOffset((prev) => prev + PAGE_SIZE);
@@ -82,7 +79,7 @@ export default function HomePage() {
             <div key={i}>
               <div className="masonry">
                 {batch.posts.map((post) => (
-                  <PostCard key={post.id} post={post} />
+                  <PostCard key={post.id} post={post} viewerId={viewerId} />
                 ))}
               </div>
               <SuggestedRow posts={batch.suggested} />
@@ -106,7 +103,7 @@ export default function HomePage() {
           {!loading && hasMore && batches.length > 0 && (
             <div className="flex justify-center my-8">
               <button
-                onClick={loadMore}
+                onClick={() => loadMore(viewerId)}
                 className="rounded-full border border-hairline px-5 py-2.5 text-sm font-medium hover:border-ink transition-colors"
               >
                 Load more
