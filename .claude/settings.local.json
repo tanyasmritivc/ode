@@ -63,7 +63,17 @@
       "Bash(powershell -Command 'Get-CimInstance Win32_Process -Filter \"name='\\\\''node.exe'\\\\''\" | Where-Object { $_.CommandLine -like '\\\\''*next*'\\\\'' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }')",
       "Bash(npm uninstall *)",
       "Bash(npm install *)",
-      "Bash(grep -q \"Ready in\" /tmp/dev-server3.log)"
+      "Bash(grep -q \"Ready in\" /tmp/dev-server3.log)",
+      "Bash(grep -q \"Ready in\" /tmp/dev-server4.log)",
+      "Bash(powershell -Command \"Get-CimInstance Win32_Process -Filter \\\\\"name='chrome.exe'\\\\\" | Select-Object ProcessId, CommandLine\")",
+      "Bash(\"/c/Program Files/Google/Chrome/Application/chrome.exe\" --headless=new --disable-gpu --remote-debugging-port=9531 --window-size=1440,1200 about:blank)",
+      "Bash(curl -s http://localhost:9531/json)",
+      "Bash(MSYS_NO_PATHCONV=1 node inspect-postcard.mjs \"C:\\\\Users\\\\tanya\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-tanya-ode\\\\b6afc25f-6ea7-44cf-abe3-5e89338d3978\\\\scratchpad\\\\postcard\\\\feed-mobile.png\" 390 844 /feed)",
+      "Bash(MSYS_NO_PATHCONV=1 node inspect-postcard2.mjs \"C:\\\\Users\\\\tanya\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-tanya-ode\\\\b6afc25f-6ea7-44cf-abe3-5e89338d3978\\\\scratchpad\\\\postcard\\\\feed-desktop.png\" 1440 1200 /feed)",
+      "Bash(MSYS_NO_PATHCONV=1 node inspect-postcard2.mjs \"C:\\\\Users\\\\tanya\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-tanya-ode\\\\b6afc25f-6ea7-44cf-abe3-5e89338d3978\\\\scratchpad\\\\postcard\\\\post-detail-mobile.png\" 390 844 /post/b61a7558-2497-4d57-9d8d-60ab4b4a384d)",
+      "Bash(MSYS_NO_PATHCONV=1 node inspect-postcard2.mjs \"C:\\\\Users\\\\tanya\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\c--Users-tanya-ode\\\\b6afc25f-6ea7-44cf-abe3-5e89338d3978\\\\scratchpad\\\\postcard\\\\weave-mobile.png\" 390 844 /weave/41f7884c-ad0a-4f25-aa81-db0c87b44c2f)",
+      "Bash(rm -f seed-postcard-test.mjs postcard-test-session.json inspect-postcard.mjs inspect-postcard2.mjs get-post-id.mjs seed-weave-test.mjs cleanup-postcard-test.mjs)",
+      "Bash(powershell -Command 'Get-CimInstance Win32_Process -Filter \"name='\\\\''chrome.exe'\\\\''\" | Where-Object { $_.CommandLine -like '\\\\''*9531*'\\\\'' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }')"
     ]
   }
 }

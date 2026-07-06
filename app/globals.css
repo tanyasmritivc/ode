@@ -42,21 +42,18 @@ body {
   font-family: ui-monospace, "SF Mono", Menlo, monospace;
 }
 
-/* Pinterest-style masonry via CSS columns; children must set break-inside: avoid */
+/* Pinterest-style masonry via CSS columns; children must set break-inside: avoid.
+   Base tier (phone widths) is a tight 2-column grid with a narrow gap; desktop
+   tiers restore the wider 16px gap and step up the column count. */
 .masonry {
-  column-count: 1;
-  column-gap: 16px;
-}
-
-@media (min-width: 480px) {
-  .masonry {
-    column-count: 2;
-  }
+  column-count: 2;
+  column-gap: 8px;
 }
 
 @media (min-width: 640px) {
   .masonry {
     column-count: 3;
+    column-gap: 16px;
   }
 }
 

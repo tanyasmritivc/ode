@@ -57,18 +57,31 @@ export function PostCard({
         ) : (
           <QuickAddToWeave postId={post.id} viewerId={viewerId ?? null} />
         )}
+
+        {/* Phone-only minimal attribution overlay - image-forward like the
+            Pinterest reference; full author row lives below for sm+ instead. */}
+        <div className="sm:hidden absolute inset-x-0 bottom-0 z-10 flex items-center gap-1.5 px-2 py-1.5 bg-gradient-to-t from-black/55 to-transparent">
+          <Avatar name={post.author.name} src={post.author.avatar_url} size={16} />
+          <span className="text-white text-xs font-medium truncate">{post.author.name}</span>
+        </div>
       </div>
-      <div className="p-3">
-        <p className="text-sm font-medium leading-snug truncate">{post.title}</p>
+
+      <div className="p-2 sm:p-3">
+        <p className="text-xs sm:text-sm font-medium leading-snug truncate">{post.title}</p>
+
         {post.caption && (
-          <p className="text-xs text-secondary leading-snug mt-1 line-clamp-2">{post.caption}</p>
+          <p className="hidden sm:block text-xs text-secondary leading-snug mt-1 line-clamp-2">
+            {post.caption}
+          </p>
         )}
-        <div className="flex items-center gap-1.5 mt-2">
+
+        <div className="hidden sm:flex items-center gap-1.5 mt-2">
           <Avatar name={post.author.name} src={post.author.avatar_url} size={18} />
           <span className="text-xs text-secondary truncate">{post.author.name}</span>
         </div>
+
         {post.tags.length > 0 && (
-          <div className="flex flex-wrap gap-x-2 gap-1 mt-1.5">
+          <div className="hidden sm:flex flex-wrap gap-x-2 gap-1 mt-1.5">
             {post.tags.slice(0, 3).map((tag) => (
               <span key={tag} className="font-mono-tag text-[11px] text-secondary">
                 #{tag}
@@ -76,7 +89,8 @@ export function PostCard({
             ))}
           </div>
         )}
-        <div className="flex items-center gap-3 mt-2">
+
+        <div className="hidden sm:flex items-center gap-3 mt-2">
           <LikeButton
             postId={post.id}
             viewerId={viewerId ?? null}
